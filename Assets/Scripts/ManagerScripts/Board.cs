@@ -6,8 +6,8 @@ using UnityEngine.Networking;
 // NOTE: Could use hash table on InstanceID to track placement of objects
 
 public class Board : NetworkBehaviour {
-	private static Board globalBoard = null;
-	public static Board GameBoard { get { return globalBoard; } }
+	private static Board _globalBoard;
+	public static Board GameBoard { get { return _globalBoard; } }
 
 
 	/***************************************************/
@@ -20,7 +20,7 @@ public class Board : NetworkBehaviour {
 
 
 	private class Cell {
-		public Mover occupant;
+		public Moveable occupant;
 		public Tile tile;
 		public Wall north, east, south, west;
 		public Cell above;
@@ -72,10 +72,9 @@ public class Board : NetworkBehaviour {
 
 
 	private void Awake() {
-		Debug.Log(name + " called AWAKE");
 		Debug.Assert(mapRoot, "No map root assigned.");
 
-		if (!globalBoard) globalBoard = this;
+		if (!_globalBoard) _globalBoard = this;
 		else {
 			Debug.LogError("More than one board detected.");
 			return;
@@ -95,7 +94,7 @@ public class Board : NetworkBehaviour {
 	//}
 
 	//public override void OnStartClient() {
-	//	Debug.Log(name + " called OnStartClient");
+	//	Debug.Log("Local Board is of Length " + grid.Length);
 	//}
 
 
@@ -212,7 +211,7 @@ public class Board : NetworkBehaviour {
 	}
 
 
-	public bool GetPiecePos(Mover m, out IntVec3 pos) {
+	public bool GetPiecePos(Moveable m, out IntVec3 pos) {
 		if (placedPieces.TryGetValue(m.ID, out pos)) {
 			return true;
 		}
@@ -220,7 +219,7 @@ public class Board : NetworkBehaviour {
 	}
 
 
-	public bool Move(IntVec3 to, Mover m) {
+	public bool Move(IntVec3 to, Moveable m) {
 		if (allowMovement && placedPieces.ContainsKey(m.GetInstanceID())) {
 			var fromCell = getCell(placedPieces[m.ID]);
 			var toCell = getCell(to);
@@ -229,7 +228,7 @@ public class Board : NetworkBehaviour {
 				placedPieces[m.ID] = to;
 				fromCell.occupant = null;
 				toCell.occupant = m;
-				m.TargetWorldPosition = toCell.tile.transform.position;
+				m.SetTargetWorldPosition(toCell.tile.transform.position, false);
 
 				emptyCells.Add(fromCell);
 				emptyCells.Remove(toCell);
@@ -242,17 +241,16 @@ public class Board : NetworkBehaviour {
 
 
 	// Places piece into the dictionary for tile ownership validation
-	public bool Place(IntVec3 on, Mover m) {
+	public bool Place(IntVec3 on, Moveable m) {
 		if (placedPieces.ContainsKey(m.ID)) return false;
 
 		var cell = getCell(on);
-		Debug.Log(cell != null);
 		if (cell != null && cell.occupant == null) {
 			cell.occupant = m;
 			placedPieces.Add(m.ID, on);
 			emptyCells.Remove(cell);
-			m.TargetWorldPosition = cell.tile.transform.position;
-			Debug.Log("Target placed at " + on.x + " " + on.y);
+
+			m.SetTargetWorldPosition(cell.tile.transform.position, true);
 
 			return true;
 		}
@@ -260,24 +258,27 @@ public class Board : NetworkBehaviour {
 	}
 
 	
-	public bool PlaceAtRandom(Mover m) {
+	public bool PlaceAtRandom(Moveable m) {
 		Debug.Assert(emptyCells != null, "Tried placing before board spawned!!");
 		if (emptyCells.Count < 1) return false;
 		
 		var index = Random.Range(0, emptyCells.Count);
 		var cell = emptyCells[index];
 
+		if (placedPieces.ContainsKey(m.ID)) Remove(m);
+
 		placedPieces.Add(m.ID, cell.GridPos);
 		cell.occupant = m;
 		emptyCells.RemoveAt(index);
-		m.TargetWorldPosition = cell.tile.transform.position;
+
+		m.SetTargetWorldPosition(cell.tile.transform.position, true);
 
 		return true;
 	}
 
 
 	// Removes piece from the dictionary for tile ownership validation
-	public bool Remove(Mover m) {
+	public bool Remove(Moveable m) {
 		var cell = getCell(placedPieces[m.ID]);
 		if (placedPieces.Remove(m.ID)) {
 			cell.occupant = null;
@@ -288,9 +289,9 @@ public class Board : NetworkBehaviour {
 	}
 
 
-	public bool RangeCheck(Mover from, Mover to, int maxRange) {
-		// THE FUCK AM I DOING
-	}
+	//public bool RangeCheck(Mover from, Mover to, int maxRange) {
+	//
+	//}
 
 
 	/***************************************************/

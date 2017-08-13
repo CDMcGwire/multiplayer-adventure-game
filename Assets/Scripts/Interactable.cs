@@ -9,41 +9,32 @@ public enum Interactions {
 	MOVE
 }
 
-public class Interactable : NetworkBehaviour {
+public class Interactable : MonoBehaviour {
 
 	[SerializeField]
 	private Useable _useable;
 
-	[SerializeField]
-	private float range = 1f;
-	private const float rangeCheckBuffer = 0.01f;
-	public float InteractRange { get { return range + rangeCheckBuffer; } }
-
-	private NetworkIdentity parentNetID;
+	private NetworkIdentity _identity;
+	public NetworkInstanceId NetID { get { return _identity.netId; } }
 
 
 	private void Start() {
-		parentNetID = GetComponentInParent<NetworkIdentity>();
-		Debug.AssertFormat(parentNetID, "Interactable component does not have a parent network ID");
+		_identity = GetComponentInParent<NetworkIdentity>();
+		Debug.AssertFormat(_identity, "ERROR: Interactable object '" + name + "' has no network identity.");
 	}
 
 
-	public bool Interact(Interactions type, NetworkInstanceId actorNetID) {
+	public void Interact(Interactions type, GameObject actor) {
 		switch (type) {
 			case Interactions.USE:
-				if (_useable) {
-					_useable.Use(actorNetID);
-					return true;
-				}
-				else {
-					return false;
-				}
+				if (_useable) _useable.Use(actor);
+				break;
 			case Interactions.SPEAK:
-				return true;
+				break;
 			case Interactions.MOVE:
-				return true;
+				break;
 			default:
-				return false;
+				break;
 		}
 	}
 }

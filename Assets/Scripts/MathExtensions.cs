@@ -13,7 +13,7 @@ public static class Vector3Ext {
 	/// <param name="v"></param>
 	/// <returns>IntVec3</returns>
 	public static IntVec3 ToInt3(this Vector3 v) {
-		return new IntVec3(Mathf.RoundToInt(v.x), Mathf.RoundToInt(v.z), Mathf.RoundToInt(v.y));
+		return new IntVec3(Mathf.RoundToInt(v.x), Mathf.RoundToInt(v.z), Mathf.FloorToInt(v.y));
 	}
 
 	/// <summary>
@@ -35,6 +35,7 @@ public static class Vector3Ext {
 	}
 }
 
+[System.Serializable]
 public struct IntVec3 {
 	public int x;
 	public int y;
@@ -46,14 +47,21 @@ public struct IntVec3 {
 		this.z = z;
 	}
 
-	public int DistanceTo(IntVec3 from, IntVec3 to) {
-		var xDist = Mathf.Abs(to.x - from.x);
-		var yDist = Mathf.Abs(to.y - from.y);
-		var zDist = Mathf.Abs(to.z - from.z);
+	public IntVec3(Vector3 vec) {
+		x = Mathf.RoundToInt(vec.x);
+		y = Mathf.RoundToInt(vec.z);
+		z = Mathf.FloorToInt(vec.y);
+	}
+
+	public int DistanceTo(IntVec3 to) {
+		var xDist = Mathf.Abs(to.x - x);
+		var yDist = Mathf.Abs(to.y - y);
+		var zDist = Mathf.Abs(to.z - z);
 		return xDist + yDist + zDist;
 	}
 }
 
+[System.Serializable]
 public struct IntVec2 {
 	public int x;
 	public int y;

@@ -22,18 +22,19 @@ public class Player : NetworkBehaviour {
 
 	/***************************************************/
 
-	// Local input functions
 
-	
+	[SerializeField]
+	private int _useRange = 1;
+	[SerializeField]
+	private float _rangeCheckOffset = 0.1f; // Needs to be adjusted to something that scales to object size.
+
 	public GameObject playerPiecePrefab;
-	private Mover mover;
+
+	private Moveable _mover;
+	public Moveable boardPiece { get { return _mover; } set { _mover = value; } }
 
 	public int ID { get { return GetInstanceID(); } }
 
-
-	private void Start() {
-		if (isServer) GameState.Game.AddPlayer(netId);
-	}
 
 	private void Update() {
 		if (!isLocalPlayer) return;
@@ -45,9 +46,13 @@ public class Player : NetworkBehaviour {
 
 	private void OnDestroy() {
 		if (isServer) {
-			GameState.Game.RemovePlayer(netId);
-			Board.GameBoard.Remove(mover);
+			Board.GameBoard.Remove(_mover);
 		}
+	}
+
+	public override void OnStartLocalPlayer() {
+		// Spawn player piece on server
+		Cmd_SpawnPlayerPiece();
 	}
 
 
@@ -59,19 +64,19 @@ public class Player : NetworkBehaviour {
 			case Direction.IDLE:
 				break;
 			case Direction.NORTH:
-				CmdMoveRelative(0, 1);
+				Cmd_MoveRelative(0, 1);
 				if (Input.GetButtonUp("Up")) CheckForHeldButton();
 				break;
 			case Direction.SOUTH:
-				CmdMoveRelative(0, -1);
+				Cmd_MoveRelative(0, -1);
 				if (Input.GetButtonUp("Down")) CheckForHeldButton();
 				break;
 			case Direction.EAST:
-				CmdMoveRelative(1, 0);
+				Cmd_MoveRelative(1, 0);
 				if (Input.GetButtonUp("Right")) CheckForHeldButton();
 				break;
 			case Direction.WEST:
-				CmdMoveRelative(-1, 0);
+				Cmd_MoveRelative(-1, 0);
 				if (Input.GetButtonUp("Left")) CheckForHeldButton();
 				break;
 			default:
@@ -115,14 +120,41 @@ public class Player : NetworkBehaviour {
 
 	private void CheckClick() {
 		if (Input.GetMouseButtonDown(0)) {
-			RaycastHit hitInfo = new RaycastHit();
-			bool hit = Physics.Raycast(Camera.main.ScreenPointToRay(Input.mousePosition), out hitInfo);
+			var hitInfo = new RaycastHit();
+			var hit = Physics.Raycast(Camera.main.ScreenPointToRay(Input.mousePosition), out hitInfo);
 
 			if (hit) {
-				var interactable = hitInfo.transform.gameObject.GetComponent<Interactable>();
-				if (interactable != null) interactable.Interact(Interactions.USE, mover.netId);
+				if (!RangeCheck(hitInfo.collider)) return;
+
+				var interactable = hitInfo.collider.GetComponent<Interactable>();
+				if (interactable != null) Cmd_UseNetworkTarget(interactable.NetID);
 			}
 		}
+	}
+
+	
+	private bool RangeCheck(Collider target) {
+		var fromPos = _mover.transform.position;
+		fromPos.z += _rangeCheckOffset;
+		var toPos = target.transform.position;
+		toPos.z += _rangeCheckOffset;
+		var ray = new Ray(fromPos, toPos - fromPos);
+
+		Debug.DrawRay(fromPos, toPos - fromPos, Color.blue, 2f);
+
+		var hitInfo = new RaycastHit();
+		var hit = Physics.Raycast(ray, out hitInfo);
+		// Can the player see the object and is it the same object?
+		if (!hit || hitInfo.collider.GetInstanceID() != target.GetInstanceID()) return false;
+
+		Debug.DrawLine(fromPos, hitInfo.point, Color.red, 0.5f);
+
+		var hitGridPos = target.transform.position.ToInt3();
+		// Is the object close enough in grid space?
+		if (hitGridPos.DistanceTo(_mover.transform.position.ToInt3()) > _useRange) return false;
+		
+		Debug.DrawLine(fromPos, hitInfo.point, Color.green, 2f);
+		return true;
 	}
 
 
@@ -131,27 +163,47 @@ public class Player : NetworkBehaviour {
 	// Networking functions
 
 	[Command]
-	public void CmdSpawnPlayerPiece() {
+	public void Cmd_SpawnPlayerPiece() {
 		var piece = Instantiate(playerPiecePrefab) as GameObject;
 		piece.name = "Player: " + GetInstanceID();
 		NetworkServer.SpawnWithClientAuthority(piece, connectionToClient);
 
-		mover = piece.GetComponent<Mover>();
+		_mover = piece.GetComponent<Moveable>();
 	}
 
 	[Command]
-	public void CmdMoveRelative(int x, int y) {
+	public void Cmd_MoveRelative(int x, int y) {
 		IntVec3 pos;
-		Board.GameBoard.GetPiecePos(mover, out pos);
+		if (!Board.GameBoard.GetPiecePos(_mover, out pos)) {
+			Debug.LogError("Tried moving an object that was not on the board.");
+			return;
+		}
 
 		pos.x += x;
 		pos.y += y;
 
-		mover.Move(pos);
+		_mover.Move(pos);
 	}
 
-	public override void OnStartLocalPlayer() {
-		// Spawn player piece on server
-		CmdSpawnPlayerPiece();
+	[Command]
+	public void Cmd_UseNetworkTarget(NetworkInstanceId targetId) {
+		var target = NetworkServer.FindLocalObject(targetId);
+		if (target == null) {
+
+			Debug.Log("Could not find target object on server.");
+
+			return;
+		}
+
+		// Range check on server side
+		var targetCollider = target.GetComponentInChildren<Collider>();
+		if (RangeCheck(targetCollider)) {
+
+			Debug.Log("Range check success on server");
+
+			var targetInteractable = targetCollider.GetComponent<Interactable>();
+			Debug.AssertFormat(targetInteractable != null, "Target interactable not found on server.");
+			targetInteractable.Interact(Interactions.USE, gameObject);
+		}
 	}
 }

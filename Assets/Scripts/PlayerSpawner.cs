@@ -6,7 +6,7 @@ using UnityEngine.Networking;
 public class PlayerSpawner : NetworkBehaviour {
 	public GameObject playerPiecePrefab;
 
-	private Mover[] playerMovers;
+	private Moveable[] playerMovers;
 
 	
 }
